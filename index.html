@@ -1,5 +1,66 @@
-js/firebase-config.js
-.firebaserc
-.firebase/
-node_modules/
-.DS_Store
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Gravimetria Cooperativa</title>
+<meta name="description" content="Plataforma para cálculo e histórico de gravimetria de resíduos recicláveis de cooperativas." />
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#1baf7a" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Gravimetria" />
+
+<link rel="stylesheet" href="css/styles.css" />
+
+<!-- Bibliotecas de terceiros (CDN, sem necessidade de build/npm) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+<div id="install-banner" class="install-banner">
+  <span>Instale o app no seu computador ou celular para acesso rápido, inclusive offline.</span>
+  <button id="install-btn">Instalar</button>
+</div>
+
+<div id="app">
+  <p style="text-align:center;padding:48px;color:#898781">Carregando…</p>
+</div>
+
+<script type="module" src="js/app.js"></script>
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("service-worker.js").catch((err) => {
+        console.warn("Falha ao registrar service worker:", err);
+      });
+    });
+  }
+
+  let deferredInstallPrompt = null;
+  const banner = document.getElementById("install-banner");
+  const installBtn = document.getElementById("install-btn");
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    banner.classList.add("show");
+  });
+  installBtn.addEventListener("click", async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    banner.classList.remove("show");
+  });
+  window.addEventListener("appinstalled", () => {
+    banner.classList.remove("show");
+  });
+</script>
+</body>
+</html>

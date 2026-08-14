@@ -1,0 +1,87 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() {
+      return request.auth != null;
+    }
+    function perfil() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+    }
+    function isMember(coopId) {
+      return signedIn() && perfil().cooperativaId == coopId;
+    }
+    function isAdmin(coopId) {
+      return signedIn() && perfil().cooperativaId == coopId && perfil().papel == 'admin';
+    }
+    // Um novo admin só pode se auto-cadastrar apontando para uma cooperativa
+    // que ele mesmo acabou de criar (campo criadoPor).
+    function novoAdminValido(uid, dados) {
+      return dados.papel == 'admin'
+        && get(/databases/$(database)/documents/cooperativas/$(dados.cooperativaId)).data.criadoPor == uid;
+    }
+    // Um novo operador só pode se auto-cadastrar apresentando um código de
+    // convite ativo que aponte para a mesma cooperativa informada.
+    function novoOperadorValido(dados) {
+      return dados.papel == 'operador'
+        && dados.codigoConviteUsado is string
+        && get(/databases/$(database)/documents/convites/$(dados.codigoConviteUsado)).data.cooperativaId == dados.cooperativaId
+        && get(/databases/$(database)/documents/convites/$(dados.codigoConviteUsado)).data.ativo == true;
+    }
+
+    // ---------- cooperativas ----------
+    match /cooperativas/{coopId} {
+      allow get: if isMember(coopId);
+      allow list: if false;
+      allow create: if signedIn() && request.resource.data.criadoPor == request.auth.uid;
+      allow update: if isAdmin(coopId);
+      allow delete: if false;
+
+      match /membros/{membroId} {
+        allow read: if isMember(coopId);
+        allow create: if signedIn() && request.auth.uid == membroId &&
+          (novoAdminValido(membroId, request.resource.data) || novoOperadorValido(request.resource.data));
+        allow update: if isAdmin(coopId);
+        allow delete: if isAdmin(coopId);
+      }
+
+      match /categorias/{catId} {
+        allow read: if isMember(coopId);
+        allow write: if isAdmin(coopId);
+      }
+
+      match /gravimetrias/{gravId} {
+        allow read: if isMember(coopId);
+        allow create: if isMember(coopId) && request.resource.data.responsavelUid == request.auth.uid;
+        allow update: if isAdmin(coopId);
+        allow delete: if isAdmin(coopId);
+      }
+    }
+
+    // ---------- convites (código de acesso da cooperativa) ----------
+    // O doc ID é o próprio código (ex.: "K7XQ2P"): sem "list", só quem
+    // conhece o código exato consegue lê-lo (padrão convite/senha curta).
+    match /convites/{codigo} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if isAdmin(request.resource.data.cooperativaId);
+      allow update: if isAdmin(resource.data.cooperativaId);
+      allow delete: if false;
+    }
+
+    // ---------- usuarios (perfil + vínculo com a cooperativa) ----------
+    match /usuarios/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid &&
+        (novoAdminValido(uid, request.resource.data) || novoOperadorValido(request.resource.data));
+      // Só permite editar campos "inofensivos" (ex.: nome) — papel e
+      // cooperativaId são imutáveis após o cadastro.
+      allow update: if signedIn() && request.auth.uid == uid &&
+        request.resource.data.papel == resource.data.papel &&
+        request.resource.data.cooperativaId == resource.data.cooperativaId;
+      allow delete: if false;
+    }
+  }
+}
